@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/hooks/use-toast";
 
 const PERKS = [
   "Unlimited scam analysis",
@@ -64,9 +65,9 @@ export default function Signup() {
   const [confirm, setConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const { signup } = useAuth();
+  const { signup, isAuthLoading } = useAuth();
+  const { toast } = useToast();
   const [, navigate] = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -83,11 +84,25 @@ export default function Signup() {
       setError("Password must be at least 6 characters.");
       return;
     }
-    setIsLoading(true);
     setError("");
-    await new Promise((res) => setTimeout(res, 1000));
-    signup(name.trim(), email.trim(), password);
-    navigate("/");
+
+    try {
+      await signup(name.trim(), email.trim(), password);
+      toast({
+        title: "Account created",
+        description: "Welcome to ScamDetector.",
+      });
+      navigate("/");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Signup failed. Please try again.";
+      setError(message);
+      toast({
+        title: "Signup failed",
+        description: message,
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -266,10 +281,10 @@ export default function Signup() {
 
                 <Button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isAuthLoading}
                   className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white rounded-xl h-12 text-base font-medium shadow-lg hover:shadow-pink-500/25 transition-all duration-200 hover:scale-[1.02] mt-2"
                 >
-                  {isLoading ? (
+                  {isAuthLoading ? (
                     <div className="flex items-center gap-2">
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       Creating account...

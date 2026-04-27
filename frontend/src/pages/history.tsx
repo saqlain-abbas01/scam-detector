@@ -1,6 +1,7 @@
-import { useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   History,
   Trash2,
@@ -23,14 +24,15 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth-context";
-import {
-  getHistory,
-  clearHistory,
-  deleteEntry,
-  type HistoryEntry,
-} from "@/lib/history-store";
 import { type RiskLevel } from "@/lib/mock-api";
 import { useToast } from "@/hooks/use-toast";
+import {
+  deleteHistoryMessage,
+  fetchUserHistory,
+  searchUserHistory,
+  type UserHistoryEntry,
+} from "@/lib/history-api";
+import { Loader } from "@/components/loader";
 
 type Filter = "All" | RiskLevel;
 
@@ -88,9 +90,11 @@ function formatDate(ts: number) {
 function HistoryCard({
   entry,
   onDelete,
+  deleting,
 }: {
-  entry: HistoryEntry;
+  entry: UserHistoryEntry;
   onDelete: (id: string) => void;
+  deleting: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { toast } = useToast();
@@ -142,8 +146,9 @@ function HistoryCard({
                 </button>
                 <button
                   onClick={() => onDelete(entry.id)}
-                  className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                  title="Delete entry"
+                  disabled={deleting}
+                  className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                  title="Delete message"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -236,23 +241,60 @@ export default function HistoryPage() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [entries, setEntries] = useState<HistoryEntry[]>(() => getHistory());
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<Filter>("All");
   const [search, setSearch] = useState("");
 
-  const handleDelete = useCallback((id: string) => {
-    deleteEntry(id);
-    setEntries(getHistory());
-  }, []);
+  const {
+    data: entries = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["analyze", "history", search],
+    queryFn: () =>
+      search.trim() ? searchUserHistory(search.trim()) : fetchUserHistory(),
+    enabled: Boolean(user),
+    retry: false,
+  });
 
-  const handleClearAll = () => {
-    clearHistory();
-    setEntries([]);
-    toast({
-      title: "History cleared",
-      description: "All scan history has been deleted.",
-    });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteHistoryMessage(id),
+    onSuccess: (message) => {
+      toast({
+        title: "Deleted",
+        description: message || "Message deleted successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["analyze", "history"] });
+    },
+    onError: (err) => {
+      const message =
+        err instanceof Error ? err.message : "Failed to delete message.";
+      toast({
+        title: "Delete failed",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDelete = (id: string) => {
+    deleteMutation.mutate(id);
   };
+
+  useEffect(() => {
+    if (!isError) return;
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to load history. Please try again.";
+    toast({
+      title: "History load failed",
+      description: message,
+      variant: "destructive",
+    });
+  }, [isError, error, toast]);
 
   const filtered = entries.filter((e) => {
     const matchFilter = filter === "All" || e.result.risk === filter;
@@ -326,17 +368,6 @@ export default function HistoryPage() {
                 All your previous scam analysis results
               </p>
             </div>
-            {entries.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClearAll}
-                className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              >
-                <Trash2 className="w-4 h-4 mr-1.5" />
-                Clear All
-              </Button>
-            )}
           </div>
         </motion.div>
 
@@ -442,7 +473,28 @@ export default function HistoryPage() {
         )}
 
         {/* Entries list */}
-        {filtered.length > 0 ? (
+        {isLoading ? (
+          <div className="py-10">
+            <Loader />
+          </div>
+        ) : isError ? (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-16"
+          >
+            <p className="text-muted-foreground mb-4">
+              Unable to load your history right now.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => refetch()}
+              className="border-white/20 bg-white/5 hover:bg-white/10"
+            >
+              Try Again
+            </Button>
+          </motion.div>
+        ) : filtered.length > 0 ? (
           <motion.div layout className="space-y-4">
             <AnimatePresence mode="popLayout">
               {filtered.map((entry) => (
@@ -450,11 +502,12 @@ export default function HistoryPage() {
                   key={entry.id}
                   entry={entry}
                   onDelete={handleDelete}
+                  deleting={deleteMutation.isPending}
                 />
               ))}
             </AnimatePresence>
           </motion.div>
-        ) : entries.length === 0 ? (
+        ) : entries.length === 0 && !search.trim() ? (
           /* Empty state — no history at all */
           <motion.div
             initial={{ opacity: 0, y: 20 }}

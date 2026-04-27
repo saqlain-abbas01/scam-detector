@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import connectDB from "./src/config/db.js";
 import authRoutes from "./src/routes/auth.js";
+import analyzeRoutes from "./src/routes/analyze.js";
+import { ensureScamEmbeddings } from "./src/ai/storeScams.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,6 +15,7 @@ const startServer = async () => {
   try {
     // Connect to MongoDB
     await connectDB();
+    await ensureScamEmbeddings();
 
     // Middleware
     app.use(express.json({ limit: "10mb" }));
@@ -36,6 +39,7 @@ const startServer = async () => {
 
     // API Routes
     app.use("/api/auth", authRoutes);
+    app.use("/api/analyze", analyzeRoutes);
 
     // 404 handler
     app.use((req, res) => {

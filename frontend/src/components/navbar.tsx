@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/hooks/use-toast";
 
 function NavLink({
   href,
@@ -41,8 +42,28 @@ function NavLink({
 
 export function Navbar() {
   const { user, logout } = useAuth();
+  const { toast } = useToast();
   const [location, navigate] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast({
+        title: "Signed out",
+        description: "You have been logged out successfully.",
+      });
+      navigate("/login");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to logout. Try again.";
+      toast({
+        title: "Logout failed",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
 
   const initials = user?.name
     ? user.name
@@ -55,7 +76,7 @@ export function Navbar() {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-white/10 bg-background/80 backdrop-blur-md">
+      <header className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-white/10 bg-background/80 backdrop-blur-md mb-12 ">
         <nav className="max-w-6xl mx-auto h-full flex items-center justify-between px-4 sm:px-6">
           {/* Logo */}
           <Link href="/">
@@ -115,7 +136,7 @@ export function Navbar() {
                   <DropdownMenuSeparator className="bg-white/10" />
                   <DropdownMenuItem
                     className="cursor-pointer text-destructive focus:text-destructive"
-                    onClick={logout}
+                    onClick={handleLogout}
                   >
                     <LogOut className="w-4 h-4 mr-2" />
                     Sign Out

@@ -7,35 +7,36 @@ export interface AnalysisResult {
   suggestion: string;
 }
 
-const results: Record<string, AnalysisResult> = {
-  high: {
-    risk: "High",
-    confidence: 94,
-    reasons: ["Suspicious link detected", "Urgency language used", "Financial bait (prize/reward)", "Unknown sender pattern"],
-    suggestion: "Do not click any links in this message. Report it to your carrier (forward to 7726). Delete immediately.",
-  },
-  medium: {
-    risk: "Medium",
-    confidence: 67,
-    reasons: ["Urgency language used", "Requests personal information"],
-    suggestion: "Exercise caution. Verify the sender through official channels before responding or clicking any links.",
-  },
-  low: {
-    risk: "Low",
-    confidence: 18,
-    reasons: ["No suspicious links detected", "No urgency language"],
-    suggestion: "This message appears safe, but always stay alert to unexpected requests for personal information.",
-  },
-};
+import { apiRequest } from "./api-client";
+
+interface AnalyzeResponse {
+  success: boolean;
+  data: {
+    risk: string;
+    confidence: number;
+    reasons: string[];
+    suggestion: string;
+  };
+}
 
 export async function analyzeMessage(message: string): Promise<AnalysisResult> {
-  await new Promise(res => setTimeout(res, 1800));
-  const lower = message.toLowerCase();
-  if (lower.includes("won") || lower.includes("click") || lower.includes("free") || lower.includes("urgent") || lower.includes("irs")) {
-    return results.high;
-  }
-  if (lower.includes("bank") || lower.includes("verify") || lower.includes("account") || lower.includes("blocked")) {
-    return results.medium;
-  }
-  return results.low;
+  const response = await apiRequest<AnalyzeResponse>("/api/analyze", {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+
+  const confidenceRaw = Number(response?.data?.confidence || 0);
+  const confidencePercent =
+    confidenceRaw <= 1
+      ? Math.round(confidenceRaw * 100)
+      : Math.max(0, Math.min(100, Math.round(confidenceRaw)));
+
+  return {
+    risk: (response?.data?.risk as RiskLevel) || "Low",
+    confidence: confidencePercent,
+    reasons: Array.isArray(response?.data?.reasons)
+      ? response.data.reasons
+      : [],
+    suggestion: response?.data?.suggestion || "",
+  };
 }
