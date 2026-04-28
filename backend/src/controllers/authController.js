@@ -1,6 +1,32 @@
 import User from "../models/User.js";
 import { generateToken } from "../utils/jwt.js";
 
+const getAuthCookieOptions = (req) => {
+  const origin = req.get("origin") || "";
+  const isLocalhostOrigin =
+    origin.includes("://localhost") || origin.includes("://127.0.0.1");
+  const useCrossSiteCookie = Boolean(origin) && !isLocalhostOrigin;
+
+  return {
+    httpOnly: true,
+    secure: useCrossSiteCookie,
+    sameSite: useCrossSiteCookie ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: "/",
+  };
+};
+
+const getClearCookieOptions = (req) => {
+  const { httpOnly, secure, sameSite, path } = getAuthCookieOptions(req);
+
+  return {
+    httpOnly,
+    secure,
+    sameSite,
+    path,
+  };
+};
+
 // @desc    Register/Signup user
 // @route   POST /api/auth/signup
 // @access  Public
@@ -38,12 +64,7 @@ const signup = async (req, res) => {
     const token = generateToken(user._id, user.email);
 
     // Set token in cookie
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    res.cookie("token", token, getAuthCookieOptions(req));
 
     return res.status(201).json({
       success: true,
@@ -105,12 +126,7 @@ const login = async (req, res) => {
     const token = generateToken(user._id, user.email);
 
     // Set token in cookie
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    res.cookie("token", token, getAuthCookieOptions(req));
 
     return res.status(200).json({
       success: true,
@@ -132,11 +148,7 @@ const login = async (req, res) => {
 // @access  Private
 const logout = (req, res) => {
   try {
-    res.clearCookie("token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    });
+    res.clearCookie("token", getClearCookieOptions(req));
 
     return res.status(200).json({
       success: true,
