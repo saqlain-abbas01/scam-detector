@@ -9,6 +9,11 @@ import { ensureScamEmbeddings } from "./src/ai/storeScams.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  "https://scam-detector-rho.vercel.app",
+  "http://localhost:5173",
+].filter(Boolean);
 
 // Initialize server
 const startServer = async () => {
@@ -23,7 +28,14 @@ const startServer = async () => {
     app.use(cookieParser());
     app.use(
       cors({
-        origin: process.env.CLIENT_URL || "http://localhost:5173",
+        origin: (origin, callback) => {
+          if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+            return;
+          }
+
+          callback(new Error("Not allowed by CORS"));
+        },
         credentials: true,
       }),
     );
